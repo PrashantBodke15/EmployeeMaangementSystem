@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # People | Employee Management System
 
 A MERN employee directory with employee registration, search and filters, profile details, editing, and deletion.
@@ -26,3 +27,6 @@ The API runs at `http://localhost:5000`. Vite proxies `/api` requests to it.
 - `GET /api/health` checks API availability.
 
 Employee records include name, work email, phone, department, job title, location, start date, salary, and employment status. Email addresses are unique.
+=======
+# EmployeeMaangementSystem
+>>>>>>> c8a10b87b737b0f30e1b64e97765a2d966e4dbea
