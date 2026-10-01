@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, NavLink, Outlet, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowDownLeft, ArrowLeft, ArrowRight, BriefcaseBusiness, Building2, CalendarDays,
   Check, ChevronDown, CircleHelp, ClipboardList, Clock3, LayoutDashboard, Mail,
@@ -7,10 +7,31 @@ import {
   UserRound, Users, Wallet
 } from 'lucide-react';
 
+const TOKEN_KEY = 'employee-hub-token';
+const USER_KEY = 'employee-hub-user';
+
+const getStoredSession = () => {
+  const token = localStorage.getItem(TOKEN_KEY);
+  const user = localStorage.getItem(USER_KEY);
+  if (!token || !user) return null;
+  try {
+    return { token, user: JSON.parse(user) };
+  } catch {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    return null;
+  }
+};
+
 const api = async (path, options = {}) => {
+  const session = getStoredSession();
   const response = await fetch(`/api${path}`, {
     ...options,
-    headers: { 'Content-Type': 'application/json', ...options.headers }
+    headers: {
+      'Content-Type': 'application/json',
+      ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}),
+      ...options.headers
+    }
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
@@ -38,7 +59,7 @@ function Status({ status }) {
   return <span className={`status status-${status?.toLowerCase().replaceAll(' ', '-')}`}>{status}</span>;
 }
 
-function Shell() {
+function Shell({ isAdmin = false }) {
   const location = useLocation();
   const title = location.pathname === '/' ? 'Overview'
     : location.pathname === '/employees/new' ? 'Add employee'
@@ -48,9 +69,9 @@ function Shell() {
   const employeeId = routeMatch?.[1] && routeMatch[1] !== 'new' ? routeMatch[1] : null;
   const employeeTabs = [
     { label: 'Employee list', to: '/employees', Icon: Users, end: true },
-    { label: 'Registration', to: '/employees/new', Icon: Plus },
+    { label: 'Registration', to: isAdmin ? '/employees/new' : null, Icon: Plus },
     { label: 'Details', to: employeeId ? `/employees/${employeeId}` : null, Icon: UserRound, end: true },
-    { label: 'Edit employee', to: employeeId ? `/employees/${employeeId}/edit` : null, Icon: Pencil }
+    { label: 'Edit employee', to: isAdmin && employeeId ? `/employees/${employeeId}/edit` : null, Icon: Pencil }
   ];
 
   return (
@@ -63,11 +84,11 @@ function Shell() {
         <div className="workspace-label">WORKSPACE <ChevronDown size={13} /></div>
         <nav className="primary-nav" aria-label="Main navigation">
           <NavLink to="/" end><LayoutDashboard size={17} />Overview</NavLink>
-          <NavLink to="/employees"><Users size={17} />Employees</NavLink>
-          <NavLink to="/employees/new"><Plus size={17} />Add employee</NavLink>
+          {isAdmin && <NavLink to="/employees"><Users size={17} />Employees</NavLink>}
+          {isAdmin && <NavLink to="/employees/new"><Plus size={17} />Add employee</NavLink>}
         </nav>
         <div className="sidebar-bottom">
-          <NavLink to="/employees"><Settings2 size={17} />Directory settings</NavLink>
+          {isAdmin && <NavLink to="/employees"><Settings2 size={17} />Directory settings</NavLink>}
           <NavLink to="/employees"><CircleHelp size={17} />Help & support</NavLink>
           <div className="account-card">
             <span className="account-avatar">JD</span>
@@ -132,9 +153,10 @@ function Dashboard() {
   const active = employees.filter((employee) => employee.status === 'Active').length;
   const departments = new Set(employees.map((employee) => employee.department)).size;
   const recent = [...employees].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5);
+  const isAdmin = JSON.parse(localStorage.getItem('employee-hub-user') || 'null')?.role === 'admin';
 
   return <>
-    <PageHeading eyebrow="PEOPLE OVERVIEW" title="Good morning, Jordan" description="A clear view of your people, all in one place." action={<Link className="button button-primary" to="/employees/new"><Plus size={16} />Add employee</Link>} />
+    <PageHeading eyebrow="PEOPLE OVERVIEW" title="Good morning, Jordan" description="A clear view of your people, all in one place." action={isAdmin ? <Link className="button button-primary" to="/employees/new"><Plus size={16} />Add employee</Link> : null} />
     {error ? <ErrorMessage message={error} /> : loading ? <Loading /> : <>
       <section className="stats-grid" aria-label="Employee summary">
         <article className="stat-card stat-green"><div className="stat-top"><span>Total employees</span><Users size={17} /></div><div className="stat-value">{employees.length.toString().padStart(2, '0')}</div><div className="stat-note"><span className="note-dot" />Across your organization</div></article>
@@ -169,9 +191,10 @@ function EmployeeList() {
     return () => controller.abort();
   }, [query]);
   const departments = [...new Set(employees.map((employee) => employee.department))].sort();
+  const isAdmin = JSON.parse(localStorage.getItem('employee-hub-user') || 'null')?.role === 'admin';
 
   return <>
-    <PageHeading eyebrow="TEAM DIRECTORY" title="Employees" description="Manage the people who make your organization work." action={<Link className="button button-primary" to="/employees/new"><Plus size={16} />Add employee</Link>} />
+    <PageHeading eyebrow="TEAM DIRECTORY" title="Employees" description="Manage the people who make your organization work." action={isAdmin ? <Link className="button button-primary" to="/employees/new"><Plus size={16} />Add employee</Link> : null} />
     <section className="directory-panel">
       <div className="directory-toolbar"><div className="search-box"><Search size={17} /><input aria-label="Search employees" placeholder="Search name, role, or email" value={search} onChange={(event) => setSearch(event.target.value)} /></div><div className="filters"><label className="select-wrap"><span className="sr-only">Filter by department</span><select value={department} onChange={(event) => setDepartment(event.target.value)}><option value="">All departments</option>{departments.map((item) => <option key={item}>{item}</option>)}</select><ChevronDown size={14} /></label><label className="select-wrap"><span className="sr-only">Filter by status</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option><option>Active</option><option>On leave</option><option>Inactive</option></select><ChevronDown size={14} /></label></div></div>
       <div className="table-meta"><span><strong>{employees.length}</strong> {employees.length === 1 ? 'employee' : 'employees'}</span><span>Updated just now</span></div>
@@ -179,6 +202,14 @@ function EmployeeList() {
       <div className="table-footer"><span>Showing {employees.length} {employees.length === 1 ? 'result' : 'results'}</span><button className="pagination-button" disabled><ArrowLeft size={15} /> Previous</button><button className="pagination-button" disabled>Next <ArrowRight size={15} /></button></div>
     </section>
   </>;
+}
+
+function RequireAdmin({ isAdmin, children }) {
+  const navigate = useNavigate();
+  if (!isAdmin) {
+    return <Navigate to="/" replace />;
+  }
+  return children;
 }
 
 function EmployeeForm() {
@@ -256,18 +287,100 @@ function EmployeeDetails() {
     try { await api(`/employees/${id}`, { method: 'DELETE' }); navigate('/employees'); }
     catch (err) { setError(err.message); setDeleting(false); }
   };
+  const isAdmin = JSON.parse(localStorage.getItem('employee-hub-user') || 'null')?.role === 'admin';
 
   if (loading) return <Loading label="Loading profile" />;
   if (error && !employee) return <><Link className="back-link" to="/employees"><ArrowLeft size={16} />Back to employees</Link><ErrorMessage message={error} /></>;
   return <>
     <Link className="back-link" to="/employees"><ArrowLeft size={16} />Back to employees</Link>
     {error && <p className="form-error" role="alert">{error}</p>}
-    <div className="profile-heading"><div className="profile-person"><Avatar employee={employee} large /><div><p className="eyebrow">EMPLOYEE PROFILE</p><h1>{employeeName(employee)}</h1><p className="profile-role">{employee.role} <span>·</span> {employee.department}</p></div></div><div className="profile-actions"><Link className="button button-outline" to={`/employees/${id}/edit`}><Pencil size={15} />Edit employee</Link><button className="button button-danger" onClick={remove} disabled={deleting}><Trash2 size={15} />{deleting ? 'Deleting...' : 'Delete'}</button></div></div>
+    <div className="profile-heading"><div className="profile-person"><Avatar employee={employee} large /><div><p className="eyebrow">EMPLOYEE PROFILE</p><h1>{employeeName(employee)}</h1><p className="profile-role">{employee.role} <span>·</span> {employee.department}</p></div></div>{isAdmin ? <div className="profile-actions"><Link className="button button-outline" to={`/employees/${id}/edit`}><Pencil size={15} />Edit employee</Link><button className="button button-danger" onClick={remove} disabled={deleting}><Trash2 size={15} />{deleting ? 'Deleting...' : 'Delete'}</button></div> : null}</div>
     <div className="profile-grid"><section className="profile-panel"><div className="section-heading"><div><p className="eyebrow">ABOUT</p><h2>Personal details</h2></div></div><dl className="detail-list"><div><dt><Mail size={16} />Work email</dt><dd><a href={`mailto:${employee.email}`}>{employee.email}</a></dd></div><div><dt><UserRound size={16} />Phone</dt><dd>{employee.phone}</dd></div><div><dt><MapPin size={16} />Location</dt><dd>{employee.location}</dd></div></dl></section>
       <section className="profile-panel"><div className="section-heading"><div><p className="eyebrow">ORGANIZATION</p><h2>Work information</h2></div></div><dl className="detail-list"><div><dt><BriefcaseBusiness size={16} />Job title</dt><dd>{employee.role}</dd></div><div><dt><Building2 size={16} />Department</dt><dd>{employee.department}</dd></div><div><dt><CalendarDays size={16} />Start date</dt><dd>{dateLabel(employee.startDate)}</dd></div><div><dt><Wallet size={16} />Annual salary</dt><dd>{money(employee.salary)}</dd></div><div><dt><ArrowDownLeft size={16} />Status</dt><dd><Status status={employee.status} /></dd></div></dl></section></div>
   </>;
 }
 
+function AuthScreen({ onAuth }) {
+  const [mode, setMode] = useState('login');
+  const [form, setForm] = useState({ fullName: '', email: '', password: '', role: 'user' });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const update = (event) => setForm({ ...form, [event.target.name]: event.target.value });
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      const endpoint = mode === 'login' ? '/auth/login' : '/auth/register';
+      const payload = mode === 'login' ? { email: form.email, password: form.password } : form;
+      const response = await api(endpoint, {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      localStorage.setItem(TOKEN_KEY, response.token);
+      localStorage.setItem(USER_KEY, JSON.stringify(response.user));
+      onAuth(response.user);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return <div className="auth-shell">
+    <div className="auth-card">
+      <div className="auth-header">
+        <span className="brand-mark"><Users size={20} strokeWidth={2.3} /></span>
+        <h1>{mode === 'login' ? 'Welcome back' : 'Create an account'}</h1>
+        <p>{mode === 'login' ? 'Sign in to access the employee directory.' : 'Register as a user or admin.'}</p>
+      </div>
+      <div className="auth-toggle">
+        <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Login</button>
+        <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')}>Register</button>
+      </div>
+      <form onSubmit={submit} className="auth-form">
+        {mode === 'register' && <label className="form-field"><span>Full name</span><input name="fullName" value={form.fullName} onChange={update} type="text" required /></label>}
+        <label className="form-field"><span>Email</span><input name="email" value={form.email} onChange={update} type="email" required /></label>
+        <label className="form-field"><span>Password</span><input name="password" value={form.password} onChange={update} type="password" required minLength="6" /></label>
+        {mode === 'register' && <label className="form-field"><span>Role</span><select name="role" value={form.role} onChange={update}><option value="user">User</option><option value="admin">Admin</option></select></label>}
+        {error && <p className="form-error" role="alert">{error}</p>}
+        <button type="submit" className="button button-primary auth-submit" disabled={loading}>{loading ? 'Please wait...' : mode === 'login' ? 'Login' : 'Register'}</button>
+      </form>
+    </div>
+  </div>;
+}
+
 export default function App() {
-  return <Routes><Route element={<Shell />}><Route index element={<Dashboard />} /><Route path="employees" element={<EmployeeList />} /><Route path="employees/new" element={<EmployeeForm />} /><Route path="employees/:id" element={<EmployeeDetails />} /><Route path="employees/:id/edit" element={<EmployeeForm />} /><Route path="*" element={<EmployeeList />} /></Route></Routes>;
+  const [session, setSession] = useState(() => getStoredSession());
+  const isAdmin = session?.user?.role === 'admin';
+  const logout = () => {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    setSession(null);
+  };
+
+  if (!session) {
+    return <AuthScreen onAuth={setSession} />;
+  }
+
+  return <>
+    <div className="topbar-user-chip">
+      <span>{session.user.fullName}</span>
+      <span className="role-badge">{session.user.role}</span>
+      <button className="button button-quiet" onClick={logout}>Logout</button>
+    </div>
+    <Routes>
+      <Route element={<Shell isAdmin={isAdmin} />}>
+        <Route index element={<Dashboard />} />
+        {!isAdmin ? <Route path="*" element={<Dashboard />} /> : null}
+        {isAdmin ? <Route path="employees" element={<EmployeeList />} /> : null}
+        {isAdmin ? <Route path="employees/new" element={<RequireAdmin isAdmin={isAdmin}><EmployeeForm /></RequireAdmin>} /> : null}
+        {isAdmin ? <Route path="employees/:id" element={<EmployeeDetails />} /> : null}
+        {isAdmin ? <Route path="employees/:id/edit" element={<RequireAdmin isAdmin={isAdmin}><EmployeeForm /></RequireAdmin>} /> : null}
+        {isAdmin ? <Route path="*" element={<EmployeeList />} /> : null}
+      </Route>
+    </Routes>
+  </>;
 }
